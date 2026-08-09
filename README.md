@@ -279,12 +279,4 @@ Test coverage includes:
 - Minimum sample size estimation
 - SPRT boundary conditions and output structure
 - Bernoulli series generation
-- Data transformation pipeline
-
----
-
-## Collaborators
-
-- [Endework Abera](https://github.com/Endework)
-- [Didier Iradukunda](https://github.com/didier-i)
-- [Biruk Getaneh](https://github.com/bkget)
+- Data transformation pipeline 
