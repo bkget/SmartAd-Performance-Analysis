@@ -1,0 +1,68 @@
+schema: '2.0'
+stages:
+  prepare:
+    cmd: python script/data_pipeline.py
+    deps:
+    - path: data/AdSmart_AB_testing_data.csv
+      hash: md5
+      md5: e8134297eabf2841cd6dd94822e9ccef
+      size: 792302
+    - path: script/data_pipeline.py
+      hash: md5
+      md5: 0f8a3e4667a9f8d8da1713839e984fa2
+      size: 8017
+    params:
+      params.yaml:
+        prepare.clean_data_path: data/clean_data.csv
+        prepare.raw_data_path: data/AdSmart_AB_testing_data.csv
+    outs:
+    - path: data/clean_data.csv
+      hash: md5
+      md5: 8ce1fe014a19c326ccf37b8c322dea19
+      size: 129082
+  train:
+    cmd: python script/train_pipeline.py
+    deps:
+    - path: data/clean_data.csv
+      hash: md5
+      md5: 8ce1fe014a19c326ccf37b8c322dea19
+      size: 129082
+    - path: script/train_classifiers.py
+      hash: md5
+      md5: c9a1e311696400a625e609ce37525719
+      size: 15489
+    - path: script/train_pipeline.py
+      hash: md5
+      md5: 159a9bae6accc35849b40195f1525d85
+      size: 5407
+    params:
+      params.yaml:
+        train.classifier: random_forest
+        train.n_folds: 5
+        train.random_state: 42
+        train.test_size: 0.25
+    outs:
+    - path: models/model.pkl
+      hash: md5
+      md5: 89750e11bfa6240855a14f4ee31f7b2d
+      size: 4385497
+  evaluate:
+    cmd: python script/evaluate.py
+    deps:
+    - path: data/clean_data.csv
+      hash: md5
+      md5: 8ce1fe014a19c326ccf37b8c322dea19
+      size: 129082
+    - path: models/model.pkl
+      hash: md5
+      md5: 89750e11bfa6240855a14f4ee31f7b2d
+      size: 4385497
+    - path: script/evaluate.py
+      hash: md5
+      md5: debc69aaa6e35ebdfdaf6c6c0ad4b363
+      size: 3018
+    outs:
+    - path: metrics.json
+      hash: md5
+      md5: 945a3fc1a9486e8ced1c2577d24f54d2
+      size: 148

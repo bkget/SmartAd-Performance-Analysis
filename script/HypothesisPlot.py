@@ -1,188 +1,262 @@
 # -*- coding: utf-8 -*-
+"""
+HypothesisPlot.py
+=================
+High-level visualisation of A/B test hypothesis distributions.
+
+Provides three plot types:
+  1. hypo_plot  – General H0/H1 plot from group sizes and conversion rates.
+  2. abplot     – Compact A/B test distribution with optional annotations.
+  3. zplot      – Standard normal with confidence interval shading.
+
+All methods optionally return the figure for embedding in Streamlit or
+saving to disk instead of calling plt.show().
+
+Author: SmartAd Performance Analysis Team
+"""
+
 import sys
 import os
-sys.path.insert(0, os.getcwd())
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+import numpy as np
 import matplotlib.pyplot as plt
 import scipy.stats as scs
-import numpy as np
 
 from PlottingFunctions import PlottingFunctions
 from ABTestingFunctions import ABTesting
-PLTF = PlottingFunctions() 
-ABT = ABTesting() 
-#plot_null, plot_alt, show_area
+
+PLTF = PlottingFunctions()
+ABT = ABTesting()
+
 
 class HypothesisPlot:
-    def _init_(self):
+    """
+    Render hypothesis-test visualisations for classical A/B experiments.
+
+    Methods
+    -------
+    hypo_plot   – H0 vs H1 distributions from raw group parameters.
+    abplot      – A/B test distribution from observed lift (d_hat).
+    zplot       – Standard normal curve with confidence shading.
+    """
+
+    def __init__(self):
+        """Initialise HypothesisPlot."""
+        pass
+
+    def hypo_plot(
+        self,
+        Control: int,
+        Exposed: int,
+        bcr: float,
+        mde: float,
+        sig_level: float = 0.05,
+        show_power: bool = False,
+        show_beta: bool = False,
+        show_alpha: bool = False,
+        show_p_value: bool = False,
+        show_legend: bool = True,
+        return_fig: bool = False,
+    ):
         """
-        Initializing HypothesisPlot class
+        Plot the null and alternative distributions for a planned A/B test.
+
+        The null distribution is centred at 0 (no effect); the alternative
+        is shifted by `mde` (minimum detectable effect).
+
+        Parameters
+        ----------
+        Control    : int   – Number of control observations.
+        Exposed    : int   – Number of exposed observations.
+        bcr        : float – Baseline conversion rate (control group).
+        mde        : float – Minimum detectable absolute lift.
+        sig_level  : float – Significance level α (default 0.05).
+        show_power : bool  – Shade the statistical power region.
+        show_beta  : bool  – Shade the Type II error region.
+        show_alpha : bool  – Shade the Type I error region.
+        show_p_value: bool – Annotate the empirical p-value.
+        show_legend: bool  – Display the legend.
+        return_fig : bool  – Return figure instead of calling plt.show().
+
+        Returns
+        -------
+        matplotlib.figure.Figure if return_fig=True, else None.
         """
-        
-    def hypo_plot(self, Control, Exposed, bcr, mde, sig_level=0.05, show_power=False, show_beta=False,
-                  show_alpha=False, show_p_value=False, show_legend=True):
-        
-        #create a plot object
         fig, ax = plt.subplots(figsize=(12, 6))
-        
-        # define parameters to find pooled standard error
+
+        # Compute pooled standard error
         X_C = bcr * Control
         X_E = (bcr + mde) * Exposed
         stderr = ABT.pooled_SE(Control, Exposed, X_C, X_E)
-        
-        # plot the distribution of the null and alternative hypothesis
+
+        # Draw both distributions
         PLTF.plot_null(ax, stderr)
         PLTF.plot_alt(ax, stderr, mde)
-        
-        # set extent of plot area
-        ax.set_xlim(-8 * stderr, 8 * stderr)
-        
-        # shade areas according to user input
+        ax.set_xlim(-8 * stderr, 8 * stderr + mde)
+
+        # Shade requested regions
         if show_power:
-            PLTF.show_area(ax, mde, stderr, sig_level, area_type='power')
+            PLTF.show_area(ax, mde, stderr, sig_level, area_type="power")
         if show_alpha:
-            PLTF.show_area(ax, mde, stderr, sig_level, area_type='alpha')
+            PLTF.show_area(ax, mde, stderr, sig_level, area_type="alpha")
         if show_beta:
-            PLTF.show_area(ax, mde, stderr, sig_level, area_type='beta')
-            
-        # show p_value based on the binomial distributions for the two groups
+            PLTF.show_area(ax, mde, stderr, sig_level, area_type="beta")
+
+        # Annotate p-value — computed dynamically
         if show_p_value:
-            null = ABT.ab_dist(stderr, 'control')
-            p_value = ABT.p_val(Control, Exposed, bcr, bcr+mde)
-            ax.text(3 * stderr, null.pdf(0),
-                    'P-value={0:.3f}'.format(p_value),
-                    fontsize=12, ha='left')
-            
-        # option to show legend
+            p_value = ABT.p_val(Control, Exposed, bcr, bcr + mde)
+            null = ABT.ab_dist(stderr, group_type="control")
+            ax.text(
+                3 * stderr,
+                null.pdf(0),
+                f"P-value = {p_value:.4f}",
+                fontsize=12,
+                ha="left",
+                color="#e63946",
+                fontweight="bold",
+            )
+
         if show_legend:
-            plt.legend()
+            plt.legend(fontsize=10)
 
-        plt.xlabel('d')
-        plt.ylabel('PDF')
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.set_xlabel("Difference in conversion rate (d)", fontsize=12)
+        ax.set_ylabel("Probability Density", fontsize=12)
+        ax.set_title("A/B Test – Null vs Alternative Hypothesis Distributions", fontsize=14)
+        plt.tight_layout()
+
+        if return_fig:
+            return fig
         plt.show()
-        
 
-    def abplot(self, N_A, N_B, bcr, d_hat, sig_level=0.05, show_power=False,
-           show_alpha=False, show_beta=False, show_p_value=False,
-           show_legend=True):
-           
-        """Example plot of AB test
-        Example:
-            abplot(n=4000, bcr=0.11, d_hat=0.03)
-        Parameters:
-            n (int): total sample size for both control and test groups (N_A + N_B)
-            bcr (float): base conversion rate; conversion rate of control
-            d_hat: difference in conversion rate between the control and test
-                groups, sometimes referred to as **minimal detectable effect** when
-                calculating minimum sample size or **lift** when discussing
-                positive improvement desired from launching a change.
-        Returns:
-            None: the function plots an AB test as two distributions for
-            visualization purposes
+    def abplot(
+        self,
+        N_A: int,
+        N_B: int,
+        bcr: float,
+        d_hat: float,
+        sig_level: float = 0.05,
+        show_power: bool = False,
+        show_alpha: bool = False,
+        show_beta: bool = False,
+        show_p_value: bool = False,
+        show_legend: bool = True,
+        return_fig: bool = False,
+    ):
         """
-        # create a plot object
+        Plot A/B distributions from observed data (post-hoc).
+
+        Parameters
+        ----------
+        N_A    : int   – Control group size.
+        N_B    : int   – Exposed group size.
+        bcr    : float – Baseline (control) conversion rate.
+        d_hat  : float – Observed lift (p_B - p_A).
+        Others : Same as hypo_plot.
+        """
         fig, ax = plt.subplots(figsize=(12, 6))
 
-        # define parameters to find pooled standard error
         X_A = bcr * N_A
         X_B = (bcr + d_hat) * N_B
         stderr = ABT.pooled_SE(N_A, N_B, X_A, X_B)
 
-        # plot the distribution of the null and alternative hypothesis
         PLTF.plot_null(ax, stderr)
         PLTF.plot_alt(ax, stderr, d_hat)
+        ax.set_xlim(-8 * stderr, 8 * stderr + d_hat)
 
-        # set extent of plot area
-        ax.set_xlim(-8 * stderr, 8 * stderr)
-
-        # shade areas according to user input
         if show_power:
-            PLTF.show_area(ax, d_hat, stderr, sig_level, area_type='power')
+            PLTF.show_area(ax, d_hat, stderr, sig_level, area_type="power")
         if show_alpha:
-            PLTF.show_area(ax, d_hat, stderr, sig_level, area_type='alpha')
+            PLTF.show_area(ax, d_hat, stderr, sig_level, area_type="alpha")
         if show_beta:
-            PLTF.show_area(ax, d_hat, stderr, sig_level, area_type='beta')
+            PLTF.show_area(ax, d_hat, stderr, sig_level, area_type="beta")
 
-        # show p_value based on the binomial distributions for the two groups
         if show_p_value:
-            null = ABT.ab_dist(stderr, 'control')
-            # p_value = ABT.p_val(N_A, N_B, bcr, bcr+d_hat)
-            ax.text(3 * stderr, null.pdf(0),
-                    'p-value={0:.3f}'.format(0.25917),
-                    fontsize=12, ha='left')
+            p_value = ABT.p_val(N_A, N_B, bcr, bcr + d_hat)
+            null = ABT.ab_dist(stderr, group_type="control")
+            ax.text(
+                3 * stderr,
+                null.pdf(0),
+                f"P-value = {p_value:.4f}",
+                fontsize=12,
+                ha="left",
+                color="#e63946",
+                fontweight="bold",
+            )
 
-        # option to show legend
         if show_legend:
-            plt.legend()
+            plt.legend(fontsize=10)
 
-        plt.xlabel('d')
-        plt.ylabel('PDF')
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.set_xlabel("Difference in conversion rate (d)", fontsize=12)
+        ax.set_ylabel("Probability Density", fontsize=12)
+        ax.set_title("Observed A/B Test Distribution", fontsize=14)
+        plt.tight_layout()
+
+        if return_fig:
+            return fig
         plt.show()
 
-    def zplot(self, area=0.95, two_tailed=True, align_right=False):
-        """Plots a z distribution with common annotations
-        Example:
-            zplot(area=0.95)
-            zplot(area=0.80, two_tailed=False, align_right=True)
-        Parameters:
-            area (float): The area under the standard normal distribution curve.
-            align (str): The area under the curve can be aligned to the center
-                (default) or to the left.
-        Returns:
-            None: A plot of the normal distribution with annotations showing the
-            area under the curve and the boundaries of the area.
+    def zplot(
+        self,
+        area: float = 0.95,
+        two_tailed: bool = True,
+        align_right: bool = False,
+        return_fig: bool = False,
+    ):
         """
-        # create plot object
-        fig = plt.figure(figsize=(12, 6))
-        ax = fig.subplots()
-        # create normal distribution
+        Plot the standard normal curve with a confidence-interval shading.
+
+        Parameters
+        ----------
+        area        : float – The confidence level (proportion of curve shaded).
+        two_tailed  : bool  – If True, shade the central area symmetrically.
+        align_right : bool  – For one-tailed tests, shade the right tail.
+        return_fig  : bool  – Return figure instead of calling plt.show().
+        """
+        fig, ax = plt.subplots(figsize=(12, 6))
         norm = scs.norm()
-        # create data points to plot
         x = np.linspace(-5, 5, 1000)
         y = norm.pdf(x)
+        ax.plot(x, y, color="#4361ee", linewidth=2.5)
 
-        ax.plot(x, y)
-
-        # code to fill areas
-        # for two-tailed tests
         if two_tailed:
             left = norm.ppf(0.5 - area / 2)
             right = norm.ppf(0.5 + area / 2)
-            ax.vlines(right, 0, norm.pdf(right), color='grey', linestyle='--')
-            ax.vlines(left, 0, norm.pdf(left), color='grey', linestyle='--')
-
-            ax.fill_between(x, 0, y, color='grey', alpha=0.25,
+            ax.vlines(right, 0, norm.pdf(right), color="grey", linestyle="--")
+            ax.vlines(left, 0, norm.pdf(left), color="grey", linestyle="--")
+            ax.fill_between(x, 0, y, color="#4361ee", alpha=0.25,
                             where=(x > left) & (x < right))
-            plt.xlabel('z')
-            plt.ylabel('PDF')
-            plt.text(left, norm.pdf(left), "z = {0:.3f}".format(left), fontsize=12,
+            ax.text(left, norm.pdf(left), f"z = {left:.3f}", fontsize=11,
                     rotation=90, va="bottom", ha="right")
-            plt.text(right, norm.pdf(right), "z = {0:.3f}".format(right),
-                    fontsize=12, rotation=90, va="bottom", ha="left")
-        # for one-tailed tests
+            ax.text(right, norm.pdf(right), f"z = {right:.3f}", fontsize=11,
+                    rotation=90, va="bottom", ha="left")
         else:
-            # align the area to the right
             if align_right:
-                left = norm.ppf(1-area)
-                ax.vlines(left, 0, norm.pdf(left), color='grey', linestyle='--')
-                ax.fill_between(x, 0, y, color='grey', alpha=0.25,
-                                where=x > left)
-                plt.text(left, norm.pdf(left), "z = {0:.3f}".format(left),
-                        fontsize=12, rotation=90, va="bottom", ha="right")
-            # align the area to the left
+                left = norm.ppf(1 - area)
+                ax.vlines(left, 0, norm.pdf(left), color="grey", linestyle="--")
+                ax.fill_between(x, 0, y, color="#4361ee", alpha=0.25, where=x > left)
+                ax.text(left, norm.pdf(left), f"z = {left:.3f}", fontsize=11,
+                        rotation=90, va="bottom", ha="right")
             else:
                 right = norm.ppf(area)
-                ax.vlines(right, 0, norm.pdf(right), color='grey', linestyle='--')
-                ax.fill_between(x, 0, y, color='grey', alpha=0.25,
-                                where=x < right)
-                plt.text(right, norm.pdf(right), "z = {0:.3f}".format(right),
-                        fontsize=12, rotation=90, va="bottom", ha="left")
+                ax.vlines(right, 0, norm.pdf(right), color="grey", linestyle="--")
+                ax.fill_between(x, 0, y, color="#4361ee", alpha=0.25, where=x < right)
+                ax.text(right, norm.pdf(right), f"z = {right:.3f}", fontsize=11,
+                        rotation=90, va="bottom", ha="left")
 
-        # annotate the shaded area
-        plt.text(0, 0.1, "shaded area = {0:.3f}".format(area), fontsize=12,
-                ha='center')
-        # axis labels
-        plt.xlabel('z')
-        plt.ylabel('PDF')
+        ax.text(0, 0.08, f"Shaded area = {area:.3f}", fontsize=12, ha="center")
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.set_xlabel("z", fontsize=12)
+        ax.set_ylabel("PDF", fontsize=12)
+        ax.set_title("Standard Normal Distribution", fontsize=14)
+        plt.tight_layout()
 
-        plt.show()   
+        if return_fig:
+            return fig
+        plt.show()

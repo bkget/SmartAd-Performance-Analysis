@@ -1,0 +1,12 @@
+prepare:
+  raw_data_path: data/AdSmart_AB_testing_data.csv
+  clean_data_path: data/clean_data.csv
+
+train:
+  classifier: random_forest
+  n_folds: 5
+  test_size: 0.25
+  random_state: 42
+
+evaluate:
+  sig_level: 0.05

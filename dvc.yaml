@@ -1,0 +1,37 @@
+stages:
+  prepare:
+    cmd: python script/data_pipeline.py
+    deps:
+      - data/AdSmart_AB_testing_data.csv
+      - script/data_pipeline.py
+    outs:
+      - data/clean_data.csv
+    params:
+      - params.yaml:
+          - prepare.raw_data_path
+          - prepare.clean_data_path
+
+  train:
+    cmd: python script/train_pipeline.py
+    deps:
+      - data/clean_data.csv
+      - script/train_classifiers.py
+      - script/train_pipeline.py
+    outs:
+      - models/model.pkl
+    params:
+      - params.yaml:
+          - train.classifier
+          - train.n_folds
+          - train.test_size
+          - train.random_state
+
+  evaluate:
+    cmd: python script/evaluate.py
+    deps:
+      - data/clean_data.csv
+      - models/model.pkl
+      - script/evaluate.py
+    metrics:
+      - metrics.json:
+          cache: false

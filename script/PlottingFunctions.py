@@ -1,127 +1,108 @@
 # -*- coding: utf-8 -*-
-import sys
-import os
-sys.path.insert(0, os.getcwd())
+"""
+PlottingFunctions.py
+====================
+Low-level Matplotlib helper routines for A/B test distribution plots.
+
+These helpers are called by HypothesisPlot to render:
+  - Null distribution (H0 centred at 0)
+  - Alternative distribution (H1 centred at MDE)
+  - Shaded regions for α (Type I error), β (Type II error), and Power
+
+Author: SmartAd Performance Analysis Team
+"""
 
 import numpy as np
+import matplotlib.pyplot as plt
 import scipy.stats as scs
 
 from ABTestingFunctions import ABTesting
+
 ABT = ABTesting()
 
-class PlottingFunctions:
-    def _init_(self):
-        """
-        Initializing PlottingFunctions class
-        """
-        
-    def plot_norm_dist(self, ax, mu, std, with_CI=False, sig_level=0.05, label=None):
-        """
-            Adds a normal distribution to the axes provided
-            Example:
-                plot_norm_dist(ax, 0, 1)  # plots a standard normal distribution
-            Parameters:
-                ax (matplotlib axes)
-                mu (float): mean of the normal distribution
-                std (float): standard deviation of the normal distribution
-            Returns:
-                None: the function adds a plot to the axes object provided
-        """
-        x = np.linspace(mu - 12 * std, mu + 12 * std, 1000)
-        y = scs.norm(mu, std).pdf(x)
-        ax.plot(x, y, label=label)
 
-        if with_CI:
-            self.plot_CI(ax, mu, std, sig_level=sig_level)
-            
-    def plot_CI(self, ax, mu, s, sig_level=0.05, color='grey'):
+class PlottingFunctions:
+    """Low-level helpers for annotating A/B test distribution figures."""
+
+    def __init__(self):
+        pass
+
+    def plot_null(self, ax, stderr: float, label: str = "H₀ (Null)") -> None:
         """
-        Calculates the two-tailed confidence interval and adds the plot to
-        an axes object.
-        Example:
-            plot_CI(ax, mu=0, s=stderr, sig_level=0.05)
-        Parameters:
-            ax (matplotlib axes)
-            mu (float): mean
-            s (float): standard deviation
-        Returns:
-            None: the function adds a plot to the axes object provided
+        Draw the null-hypothesis normal distribution (centred at 0).
+
+        Parameters
+        ----------
+        ax     : matplotlib Axes object.
+        stderr : float – Pooled standard error (controls distribution width).
+        label  : str   – Legend label for the curve.
         """
-        left, right = ABT.confidence_interval(sample_mean=mu, sample_std=s,
-                                      sig_level=sig_level)
-        ax.axvline(left, c=color, linestyle='--', alpha=0.5)
-        ax.axvline(right, c=color, linestyle='--', alpha=0.5)
-        
-    def plot_null(self, ax, stderr):
+        null_dist = ABT.ab_dist(stderr, group_type="control")
+        x = np.linspace(null_dist.ppf(0.0001), null_dist.ppf(0.9999), 500)
+        ax.plot(x, null_dist.pdf(x), label=label, color="#4361ee", linewidth=2.5)
+
+    def plot_alt(self, ax, stderr: float, mde: float, label: str = "H₁ (Alternative)") -> None:
         """
-        Plots the null hypothesis distribution where if there is no real change,
-        the distribution of the differences between the test and the control groups
-        will be normally distributed.
-        The confidence band is also plotted.
-        Example:
-            plot_null(ax, stderr)
-        Parameters:
-            ax (matplotlib axes)
-            stderr (float): the pooled standard error of the control and test group
-        Returns:
-            None: the function adds a plot to the axes object provided
+        Draw the alternative-hypothesis normal distribution (centred at MDE).
+
+        Parameters
+        ----------
+        ax     : matplotlib Axes object.
+        stderr : float – Pooled standard error.
+        mde    : float – Minimum detectable effect (mean shift).
+        label  : str   – Legend label for the curve.
         """
-        self.plot_norm_dist(ax, 0, stderr, label="Null")
-        self.plot_CI(ax, mu=0, s=stderr, sig_level=0.05)
-        
-    def plot_alt(self, ax, stderr, mde):
+        alt_dist = ABT.ab_dist(stderr, mde=mde, group_type="exposed")
+        x = np.linspace(alt_dist.ppf(0.0001), alt_dist.ppf(0.9999), 500)
+        ax.plot(x, alt_dist.pdf(x), label=label, color="#f72585", linewidth=2.5)
+
+    def show_area(
+        self,
+        ax,
+        mde: float,
+        stderr: float,
+        sig_level: float = 0.05,
+        area_type: str = "alpha",
+    ) -> None:
         """
-        Plots the alternative hypothesis distribution where if there is a real
-        change, the distribution of the differences between the test and the
-        control groups will be normally distributed and centered around d_hat
-        The confidence band is also plotted.
-        Example:
-            plot_alt(ax, stderr, mde=0.025)
-        Parameters:
-            ax (matplotlib axes)
-            stderr (float): the pooled standard error of the control and test group
-        Returns:
-            None: the function adds a plot to the axes object provided
+        Shade a region under one of the distributions.
+
+        Parameters
+        ----------
+        ax         : matplotlib Axes.
+        mde        : float – Effect size.
+        stderr     : float – Pooled standard error.
+        sig_level  : float – Significance level α.
+        area_type  : str   – One of 'alpha', 'beta', or 'power'.
         """
-        self.plot_norm_dist(ax, mde, stderr, label="Alternative")
-        
-    def show_area(self, ax, mde, stderr, sig_level, area_type=None):
-        """
-        Fill between upper significance boundary and distribution for
-        alternative hypothesis
-        """
-        left, right = ABT.confidence_interval(sample_mean=0, sample_std=stderr,
-                                      sig_level=sig_level)
-        x = np.linspace(-12 * stderr, 12 * stderr, 1000)
-        null = ABT.ab_dist(stderr, 'control')
-        alternative = ABT.ab_dist(stderr, mde, 'exposed')
-                
-         # if area_type is alpha
-         # Fill between upper significance boundary and distribution for null
-         # hypothesis
-        if area_type == 'alpha':
-             ax.fill_between(x, 0, null.pdf(x), color='blue', alpha=0.25,
-                             where=(x > right))
-             ax.text(-3 * stderr, null.pdf(0),
-                     'alpha={0:.3f}'.format(1 - null.cdf(right)),
-                     fontsize=12, ha='right', color='k')
-        
-        # if area_type is power
-        # Fill between upper significance boundary and distribution for alternative
-        # hypothesis
-        if area_type == 'power':
-            ax.fill_between(x, 0, alternative.pdf(x), color='green', alpha=0.25,
-                            where=(x > right))
-            ax.text(-5 * stderr, null.pdf(0),
-                    'power={0:.3f}'.format(1 - alternative.cdf(right)),
-                    fontsize=12, ha='right', color='k')
-            
-        # if area_type is beta
-        # Fill between distribution for alternative hypothesis and upper
-        # significance boundary
-        if area_type == 'beta':
-            ax.fill_between(x, 0, alternative.pdf(x), color='red', alpha=0.25,
-                            where=(x < right))
-            ax.text(-1 * stderr, null.pdf(0),
-                    'beta={0:.3f}'.format(alternative.cdf(right)),
-                    fontsize=12, ha='right', color='k')    
+        null = ABT.ab_dist(stderr, group_type="control")
+        alt = ABT.ab_dist(stderr, mde=mde, group_type="exposed")
+
+        # The critical threshold for rejecting H0 (right-tailed)
+        z_crit = null.ppf(1 - sig_level)
+        x = np.linspace(-8 * stderr, 8 * stderr + mde, 1000)
+
+        if area_type == "alpha":
+            # Region where H0 is incorrectly rejected (Type I error)
+            ax.fill_between(
+                x, null.pdf(x),
+                where=(x >= z_crit),
+                alpha=0.5, color="#e63946",
+                label=f"α = {sig_level:.2f} (Type I error)",
+            )
+        elif area_type == "beta":
+            # Region where H1 is incorrectly rejected (Type II error)
+            ax.fill_between(
+                x, alt.pdf(x),
+                where=(x < z_crit),
+                alpha=0.5, color="#f4a261",
+                label=f"β (Type II error)",
+            )
+        elif area_type == "power":
+            # Region where H1 is correctly detected
+            ax.fill_between(
+                x, alt.pdf(x),
+                where=(x >= z_crit),
+                alpha=0.5, color="#2a9d8f",
+                label=f"Power = 1 - β",
+            )
